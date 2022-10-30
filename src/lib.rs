@@ -48,6 +48,25 @@ mod tests {
 
         assert_eq!(input, got);
     }
+
+    #[test]
+    fn retrieval() {
+        let input = "a, aaa, aa, a, a, a ,a, aachen, aanderthen, aalamabama, aaalligator, behemeoth, bet, bed, ber, bar"
+            .split(',')
+            .map(|s| s.trim().as_bytes().to_vec());
+        
+        let mut input: Vec<_> = input.collect();
+        input.sort();
+
+        let mut dict = Dict::<(), 4>::new();
+
+        for elem in input {
+            dict.push(elem, ());
+        }
+
+        let index = dict.index_of(b"bar");
+        assert!(index.is_some(), "element can be found in dictionary");
+    }
 }
 
 pub struct Dict<V, const BLOCKSIZE: usize> {
@@ -116,6 +135,7 @@ where
 
             let block = Block::<B>::new(&values);
             self.keys.push(block);
+            self.current_block.clear();
         }
     }
 }

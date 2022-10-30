@@ -1,3 +1,7 @@
+use std::cmp::Ordering;
+
+use varint_compression::decompress;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -40,7 +44,7 @@ mod tests {
             b"aadfg".to_vec(),
         ];
 
-        let got = Block::<4>::new(&input.clone()).to_vec();
+        let got = Block::<4>::new(&input).to_vec();
 
         assert_eq!(input, got);
     }
@@ -62,6 +66,36 @@ where
             values: Vec::new(),
             current_block: Vec::new(),
         }
+    }
+
+    pub fn values(&self) -> &[V] {
+        &self.values
+    }
+
+    pub fn index_of(&self, key: &[u8]) -> Option<usize> {
+        fn binary_search<const B: usize>(data: &[Block<B>], elem: &[u8]) -> Option<usize> {
+            if data.is_empty() {
+                return None;
+            }
+
+            let index = data.len() / 2;
+
+            Some(match data[index].cmp(elem) {
+                Ordering::Equal => index,
+                Ordering::Less => index + 1 + binary_search(&data[(index + 1)..], elem)?,
+                Ordering::Greater => binary_search(&data[..index], elem)?,
+            })
+        }
+
+        let block_id = binary_search(&self.keys, key)?;
+
+        for (i, v) in self.keys[block_id].to_vec().into_iter().enumerate() {
+            if v == key {
+                return Some(block_id * B + i);
+            }
+        }
+
+        None
     }
 
     pub fn push(&mut self, key: Vec<u8>, value: V) {
@@ -111,6 +145,20 @@ fn common_prefix_len(values: &[Vec<u8>]) -> usize {
 }
 
 impl<const B: usize> Block<B> {
+    fn cmp(&self, other: &[u8]) -> Ordering {
+        let values = self.to_vec();
+
+        match (&values[0] as &[u8]).cmp(other) {
+            Ordering::Greater => Ordering::Greater,
+            Ordering::Equal => Ordering::Equal,
+            Ordering::Less => match (&values[B - 1] as &[u8]).cmp(other) {
+                Ordering::Less => Ordering::Less,
+                Ordering::Equal => Ordering::Equal,
+                Ordering::Greater => Ordering::Equal,
+            },
+        }
+    }
+
     fn new(values: &[Vec<u8>]) -> Self {
         use varint_compression::*;
 
@@ -137,7 +185,6 @@ impl<const B: usize> Block<B> {
     }
 
     fn to_vec(&self) -> Vec<Vec<u8>> {
-        use varint_compression::decompress;
         let input = &self.data;
 
         let (n, rest) = decompress(input).unwrap();
